@@ -25,6 +25,8 @@ type WorkerPool struct {
 	wg           sync.WaitGroup     // WaitGroup to wait for all workers to finish.
 	ctx          context.Context    // Context to control cancellation of worker operations.
 	cancel       context.CancelFunc // Function to cancel the context and stop the workers.
+	mu           sync.Mutex         // Mutex to protect shared resources.
+	stopped      bool               // Flag to indicate if the worker pool has been stopped.
 }
 
 // NewWorkerPool creates and returns a new WorkerPool with the specified number of workers and buffer size.
@@ -78,6 +80,13 @@ func (wp *WorkerPool) Start() {
 
 // Submit adds a task to the tasks channel to be processed by workers.
 func (wp *WorkerPool) Submit(task Task) bool {
+	wp.mu.Lock()
+	defer wp.mu.Unlock() // Lock to ensure thread-safe access to the worker pool state.
+
+	if wp.stopped {
+		return false // If the pool is stopped, do not accept new tasks.
+	}
+
 	select {
 	case <-wp.ctx.Done(): // If the context is canceled, return false to indicate failure.
 		return false
@@ -93,8 +102,16 @@ func (wp *WorkerPool) Results() <-chan Result {
 
 // Stop stops the worker pool, cancels the context, and waits for all workers to finish.
 func (wp *WorkerPool) Stop() {
-	wp.cancel()           // Cancel the context to signal workers to stop.
-	close(wp.tasksChan)   // Close the tasks channel to indicate no more tasks will be submitted.
+	wp.mu.Lock()
+	if wp.stopped {
+		wp.mu.Unlock()
+		return // If already stopped, do nothing.
+	}
+	wp.stopped = true
+	wp.cancel()         // Cancel the context to signal workers to stop.
+	close(wp.tasksChan) // Close the tasks channel to indicate no more tasks will be submitted.
+	wp.mu.Unlock()
+
 	wp.wg.Wait()          // Wait for all workers to finish.
 	close(wp.resultsChan) // Close the results channel to indicate no more results will be sent.
 }
