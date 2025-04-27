@@ -1,3 +1,6 @@
+// Package workerpool provides a simple and efficient implementation of a worker pool in Go.
+// It allows concurrent processing of tasks using a fixed number of workers, making it ideal
+// for managing workloads in a controlled and scalable manner.
 package workerpool
 
 import (
