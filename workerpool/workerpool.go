@@ -38,3 +38,31 @@ func NewWorkerPool(workersCount, bufferSize int) *WorkerPool {
 		cancel:       cancel,                        // Assign the cancel function to stop the workers.
 	}
 }
+
+// a worker processes tasks from tasksChan and sends results to resultsChan.
+func (wp *WorkerPool) worker() {
+	defer wp.wg.Done() // Ensure the WaitGroup counter is decremented when the worker finishes.
+
+	for {
+		select {
+		case <-wp.ctx.Done(): // If the context is canceled, stop the worker.
+			return
+		case task, ok := <-wp.tasksChan: // Get a task from the tasks channel.
+			if !ok { // If the tasks channel is closed, stop the worker.
+				return
+			}
+			// Execute the task and get the result.
+			output, err := task.Execute()
+			result := Result{
+				Output: output,
+				Err:    err,
+				Task:   task,
+			}
+			select {
+			case <-wp.ctx.Done(): // If the context is canceled during result handling, stop.
+				return
+			case wp.resultsChan <- result: // Send the result to the results channel.
+			}
+		}
+	}
+}
