@@ -82,3 +82,9 @@ func (gs *GracefulShutdown) cleanup() {
 	log.Println("Graceful shutdown complete.")
 	os.Exit(0)
 }
+
+// WaitForShutdown listens for the context cancellation and can be used in goroutines
+func (gs *GracefulShutdown) WaitForShutdown() {
+	<-gs.ctx.Done()
+	log.Println("Graceful shutdown triggered, context canceled.")
+}
