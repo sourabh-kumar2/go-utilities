@@ -75,3 +75,13 @@ func (wp *WorkerPool) Start() {
 		go wp.worker() // Launch each worker in a new goroutine.
 	}
 }
+
+// Submit adds a task to the tasks channel to be processed by workers.
+func (wp *WorkerPool) Submit(task Task) bool {
+	select {
+	case <-wp.ctx.Done(): // If the context is canceled, return false to indicate failure.
+		return false
+	case wp.tasksChan <- task: // If the task channel is not full, submit the task.
+		return true
+	}
+}
