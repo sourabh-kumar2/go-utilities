@@ -85,3 +85,8 @@ func (wp *WorkerPool) Submit(task Task) bool {
 		return true
 	}
 }
+
+// Results returns a read-only channel for receiving the results of processed tasks.
+func (wp *WorkerPool) Results() <-chan Result {
+	return wp.resultsChan
+}
