@@ -21,6 +21,7 @@ type GracefulShutdown struct {
 	signals      []os.Signal
 	signalCh     chan os.Signal
 	cleanupFuncs []func()
+	exitFunc     func(int)
 }
 
 // New creates a new GracefulShutdown instance.
@@ -37,6 +38,7 @@ func New(signals ...os.Signal) *GracefulShutdown {
 		cancel:   cancel,
 		signals:  signals,
 		signalCh: make(chan os.Signal, 1),
+		exitFunc: os.Exit,
 	}
 }
 
@@ -90,7 +92,7 @@ func (gs *GracefulShutdown) cleanup() {
 	}
 
 	log.Println("Graceful shutdown complete.")
-	os.Exit(0)
+	gs.exitFunc(0)
 }
 
 // WaitForShutdown blocks until the context is canceled, indicating that a shutdown has been triggered.
