@@ -90,3 +90,11 @@ func (wp *WorkerPool) Submit(task Task) bool {
 func (wp *WorkerPool) Results() <-chan Result {
 	return wp.resultsChan
 }
+
+// Stop stops the worker pool, cancels the context, and waits for all workers to finish.
+func (wp *WorkerPool) Stop() {
+	wp.cancel()           // Cancel the context to signal workers to stop.
+	close(wp.tasksChan)   // Close the tasks channel to indicate no more tasks will be submitted.
+	wp.wg.Wait()          // Wait for all workers to finish.
+	close(wp.resultsChan) // Close the results channel to indicate no more results will be sent.
+}
