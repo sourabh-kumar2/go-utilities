@@ -5,7 +5,9 @@ package workerpool
 
 import (
 	"context"
+	"log"
 	"sync"
+	"time"
 )
 
 // Task defines an interface for tasks to be executed by workers in the pool.
@@ -108,13 +110,26 @@ func (wp *WorkerPool) Stop() {
 	wp.mu.Lock()
 	if wp.stopped {
 		wp.mu.Unlock()
-		return // If already stopped, do nothing.
+		return
 	}
 	wp.stopped = true
-	wp.cancel()         // Cancel the context to signal workers to stop.
-	close(wp.tasksChan) // Close the tasks channel to indicate no more tasks will be submitted.
+	wp.cancel()
+	close(wp.tasksChan)
 	wp.mu.Unlock()
 
-	wp.wg.Wait()          // Wait for all workers to finish.
-	close(wp.resultsChan) // Close the results channel to indicate no more results will be sent.
+	// Use a timeout for waiting
+	done := make(chan struct{})
+	go func() {
+		wp.wg.Wait()
+		close(done)
+	}()
+
+	select {
+	case <-done:
+		// Workers finished gracefully
+	case <-time.After(5 * time.Second):
+		log.Println("WARNING: Timed out waiting for workers to finish")
+	}
+
+	close(wp.resultsChan)
 }
