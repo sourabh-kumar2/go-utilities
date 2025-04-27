@@ -66,3 +66,12 @@ func (wp *WorkerPool) worker() {
 		}
 	}
 }
+
+// Start launches the worker goroutines to process tasks concurrently.
+func (wp *WorkerPool) Start() {
+	// Start the worker goroutines.
+	for i := 0; i < wp.workersCount; i++ {
+		wp.wg.Add(1)   // Add to the WaitGroup to track the number of workers.
+		go wp.worker() // Launch each worker in a new goroutine.
+	}
+}
