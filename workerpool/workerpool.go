@@ -26,3 +26,15 @@ type WorkerPool struct {
 	ctx          context.Context    // Context to control cancellation of worker operations.
 	cancel       context.CancelFunc // Function to cancel the context and stop the workers.
 }
+
+// NewWorkerPool creates and returns a new WorkerPool with the specified number of workers and buffer size.
+func NewWorkerPool(workersCount, bufferSize int) *WorkerPool {
+	ctx, cancel := context.WithCancel(context.Background()) // Creating a cancelable context for managing worker lifecycle.
+	return &WorkerPool{
+		workersCount: workersCount,
+		tasksChan:    make(chan Task, bufferSize),   // Buffer to store tasks until workers can process them.
+		resultsChan:  make(chan Result, bufferSize), // Buffer to store results of task executions.
+		ctx:          ctx,                           // Assign the created context.
+		cancel:       cancel,                        // Assign the cancel function to stop the workers.
+	}
+}
