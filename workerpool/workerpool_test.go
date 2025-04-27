@@ -44,3 +44,30 @@ func TestWorkerPool_BasicTaskSubmission(t *testing.T) {
 		t.Errorf("Expected output %d, but got %v", task.id, result.Output)
 	}
 }
+
+func TestWorkerPool_TaskWithErrorHandling(t *testing.T) {
+	workersCount := 3
+	bufferSize := 5
+	pool := NewWorkerPool(workersCount, bufferSize)
+
+	// Start the worker pool
+	pool.Start()
+	defer pool.Stop()
+
+	// Submit a failing task
+	task := &MockTask{id: 1, shouldFail: true}
+	if !pool.Submit(task) {
+		t.Errorf("Failed to submit task %d", task.id)
+	}
+
+	// Collect results
+	result := <-pool.Results()
+
+	// Verify the result
+	if result.Err == nil {
+		t.Errorf("Expected error for task %d, but got none", task.id)
+	}
+	if result.Output != nil {
+		t.Errorf("Expected nil output for failed task %d, but got %v", task.id, result.Output)
+	}
+}
