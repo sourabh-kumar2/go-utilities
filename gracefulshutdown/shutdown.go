@@ -101,3 +101,12 @@ func (gs *GracefulShutdown) WaitForShutdown() {
 	<-gs.ctx.Done()
 	log.Println("Graceful shutdown triggered, context canceled.")
 }
+
+// CleanUp runs the cleanup functions immediately.
+func (gs *GracefulShutdown) CleanUp() {
+	// Log the shutdown initiation
+	log.Println("Shutting down gracefully...")
+
+	// Run the cleanup functions
+	gs.cleanup()
+}
