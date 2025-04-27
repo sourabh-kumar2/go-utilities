@@ -32,6 +32,7 @@ type WorkerPool struct {
 	cancel       context.CancelFunc // Function to cancel the context and stop the workers.
 	mu           sync.Mutex         // Mutex to protect shared resources.
 	stopped      bool               // Flag to indicate if the worker pool has been stopped.
+	resultsWg    sync.WaitGroup     // WaitGroup to track results processing
 }
 
 // NewWorkerPool creates and returns a new WorkerPool with the specified number of workers and buffer size.
@@ -65,8 +66,13 @@ func (wp *WorkerPool) worker() {
 				Err:    err,
 				Task:   task,
 			}
+
+			// Increment result counter before sending
+			wp.resultsWg.Add(1)
+
 			select {
 			case <-wp.ctx.Done(): // If the context is canceled during result handling, stop.
+				wp.resultsWg.Done() // Decrement since we won't send this result
 				return
 			case wp.resultsChan <- result: // Send the result to the results channel.
 			}
@@ -105,6 +111,11 @@ func (wp *WorkerPool) Results() <-chan Result {
 	return wp.resultsChan
 }
 
+// markResultProcessed decrements the resultsWg counter to track processed results
+func (wp *WorkerPool) markResultProcessed() {
+	wp.resultsWg.Done()
+}
+
 // Stop stops the worker pool, cancels the context, and waits for all workers to finish.
 func (wp *WorkerPool) Stop() {
 	wp.mu.Lock()
@@ -113,11 +124,10 @@ func (wp *WorkerPool) Stop() {
 		return
 	}
 	wp.stopped = true
-	wp.cancel()
-	close(wp.tasksChan)
+	close(wp.tasksChan) // Close task channel to signal workers to stop
 	wp.mu.Unlock()
 
-	// Use a timeout for waiting
+	// Use a timeout for waiting for workers to finish
 	done := make(chan struct{})
 	go func() {
 		wp.wg.Wait()
@@ -127,9 +137,34 @@ func (wp *WorkerPool) Stop() {
 	select {
 	case <-done:
 		// Workers finished gracefully
+		log.Println("All workers finished gracefully")
 	case <-time.After(5 * time.Second):
 		log.Println("WARNING: Timed out waiting for workers to finish")
+		wp.cancel() // Force cancel if timed out
 	}
 
+	// Wait for all results to be processed with timeout
+	resultsDone := make(chan struct{})
+	go func() {
+		wp.resultsWg.Wait()
+		close(resultsDone)
+	}()
+
+	select {
+	case <-resultsDone:
+		// All results processed
+		log.Println("All results processed")
+	case <-time.After(5 * time.Second):
+		log.Println("WARNING: Timed out waiting for results to be processed")
+	}
+
+	// Only now close the results channel
 	close(wp.resultsChan)
+	wp.cancel() // Ensure context is canceled
+}
+
+// ProcessResult Helper function to mark a result as processed
+// This should be called by the consumer after processing each result
+func ProcessResult(wp *WorkerPool, result Result) {
+	wp.markResultProcessed()
 }

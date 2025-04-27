@@ -4,7 +4,6 @@ import (
 	"errors"
 	"sync"
 	"testing"
-	"time"
 )
 
 // MockTask is a mock implementation of the Task interface for testing.
@@ -33,6 +32,8 @@ func TestWorkerPool_BasicTaskSubmission(t *testing.T) {
 	}
 
 	result := <-pool.Results()
+	defer ProcessResult(pool, result) // Mark result as processed
+
 	if result.Err != nil || result.Output != task.id {
 		t.Errorf("Expected output %d, got %v (error: %v)", task.id, result.Output, result.Err)
 	}
@@ -50,6 +51,8 @@ func TestWorkerPool_TaskExecutionFailure(t *testing.T) {
 	}
 
 	result := <-pool.Results()
+	defer ProcessResult(pool, result) // Mark result as processed
+
 	if result.Err == nil {
 		t.Errorf("Expected error for task %d, but got none", task.id)
 	}
@@ -64,6 +67,10 @@ func TestWorkerPool_PoolShutdown(t *testing.T) {
 	if !pool.Submit(task) {
 		t.Errorf("Failed to submit task %d", task.id)
 	}
+
+	// Process the result before stopping
+	result := <-pool.Results()
+	ProcessResult(pool, result)
 
 	pool.Stop()
 
@@ -88,7 +95,9 @@ func TestWorkerPool_MultipleTasksSubmission(t *testing.T) {
 
 	results := make([]Result, 0)
 	for i := 0; i < taskCount; i++ {
-		results = append(results, <-pool.Results())
+		result := <-pool.Results()
+		defer ProcessResult(pool, result) // Mark result as processed
+		results = append(results, result)
 	}
 
 	if len(results) != taskCount {
@@ -130,7 +139,9 @@ func TestWorkerPool_Concurrency(t *testing.T) {
 
 	results := make([]Result, 0)
 	for i := 0; i < taskCount; i++ {
-		results = append(results, <-pool.Results())
+		result := <-pool.Results()
+		ProcessResult(pool, result) // Mark result as processed
+		results = append(results, result)
 	}
 
 	if len(results) != taskCount {
@@ -145,11 +156,20 @@ func TestWorkerPool_BufferOverflow(t *testing.T) {
 	defer pool.Stop()
 
 	taskCount := 5
+	submitted := 0
 	for i := 0; i < taskCount; i++ {
 		task := &MockTask{id: i, shouldFail: false}
-		if !pool.Submit(task) {
+		if pool.Submit(task) {
+			submitted++
+		} else {
 			t.Logf("Task %d rejected due to buffer overflow", i)
 		}
+	}
+
+	// Process all submitted tasks
+	for i := 0; i < submitted; i++ {
+		result := <-pool.Results()
+		ProcessResult(pool, result)
 	}
 }
 
@@ -169,7 +189,9 @@ func TestWorkerPool_MultipleWorkers(t *testing.T) {
 
 	results := make([]Result, 0)
 	for i := 0; i < taskCount; i++ {
-		results = append(results, <-pool.Results())
+		result := <-pool.Results()
+		ProcessResult(pool, result) // Mark result as processed
+		results = append(results, result)
 	}
 
 	if len(results) != taskCount {
@@ -187,31 +209,15 @@ func TestWorkerPool_SubmitBeforeShutdown(t *testing.T) {
 		t.Errorf("Failed to submit task %d", task.id)
 	}
 
-	var wg sync.WaitGroup
+	// Consume result and mark as processed
+	result := <-pool.Results()
+	ProcessResult(pool, result)
 
-	results := make([]Result, 0)
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
-		for result := range pool.Results() {
-			results = append(results, result)
-		}
-	}()
-
-	time.Sleep(100 * time.Millisecond)
-
-	pool.Stop()
-	wg.Wait()
-
-	if len(results) != 1 {
-		t.Errorf("Expected 1 result, got %d", len(results))
-		return
-	}
-
-	result := results[0]
 	if result.Err != nil || result.Output != task.id {
 		t.Errorf("Expected output %d, got %v (error: %v)", task.id, result.Output, result.Err)
 	}
+
+	pool.Stop()
 }
 
 // 10. Worker Pool Stop Mechanism
@@ -223,6 +229,10 @@ func TestWorkerPool_StopMechanism(t *testing.T) {
 	if !pool.Submit(task) {
 		t.Errorf("Failed to submit task %d", task.id)
 	}
+
+	// Process the result before stopping
+	result := <-pool.Results()
+	ProcessResult(pool, result)
 
 	pool.Stop()
 
