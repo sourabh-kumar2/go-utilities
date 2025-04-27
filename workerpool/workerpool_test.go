@@ -1,43 +1,46 @@
 package workerpool
 
 import (
-	"reflect"
+	"errors"
 	"testing"
 )
 
-func TestNewWorkerPool(t *testing.T) {
-	workersCount := 5
-	bufferSize := 10
+// MockTask is a mock implementation of the Task interface for testing.
+type MockTask struct {
+	id         int
+	shouldFail bool
+}
+
+// Execute simulates task execution.
+func (m *MockTask) Execute() (interface{}, error) {
+	if m.shouldFail {
+		return nil, errors.New("task failed")
+	}
+	return m.id, nil
+}
+
+func TestWorkerPool_BasicTaskSubmission(t *testing.T) {
+	workersCount := 3
+	bufferSize := 5
 	pool := NewWorkerPool(workersCount, bufferSize)
 
-	// Check if the worker count is correct
-	if pool.workersCount != workersCount {
-		t.Errorf("Expected workersCount %d, but got %d", workersCount, pool.workersCount)
+	pool.Start()
+	defer pool.Stop()
+
+	// Submit a simple task
+	task := &MockTask{id: 1, shouldFail: false}
+	if !pool.Submit(task) {
+		t.Errorf("Failed to submit task %d", task.id)
 	}
 
-	// Check if the tasks channel is correctly initialized
-	if cap(pool.tasksChan) != bufferSize {
-		t.Errorf("Expected tasks channel buffer size %d, but got %d", bufferSize, cap(pool.tasksChan))
-	}
+	// Collect results
+	result := <-pool.Results()
 
-	// Check if the results channel is correctly initialized
-	if cap(pool.resultsChan) != bufferSize {
-		t.Errorf("Expected results channel buffer size %d, but got %d", bufferSize, cap(pool.resultsChan))
+	// Verify the result
+	if result.Err != nil {
+		t.Errorf("Expected no error, but got: %v", result.Err)
 	}
-
-	// Check if the context is not nil
-	if pool.ctx == nil {
-		t.Errorf("Expected a non-nil context")
-	}
-
-	// Check if cancel function is not nil
-	if pool.cancel == nil {
-		t.Errorf("Expected a non-nil cancel function")
-	}
-
-	// Check if the type of cancel function is correct
-	cancelType := reflect.TypeOf(pool.cancel).String()
-	if cancelType != "context.CancelFunc" {
-		t.Errorf("Expected cancel function of type context.CancelFunc, but got %s", cancelType)
+	if result.Output != task.id {
+		t.Errorf("Expected output %d, but got %v", task.id, result.Output)
 	}
 }
